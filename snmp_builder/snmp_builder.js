@@ -25,13 +25,16 @@
 // Show result in oidview table
 // viewtype: 	0 : auto detect oid is table or not (assume if its name's end with string "Table", it is a table)
 //		1 : it's a table.
-function clickTree(oid, idx, viewtype)
+function clickTreee(oid, idx, viewtype, doMap)
 {
 	if (!oid) return;
 	if (!viewtype || viewtype == 0){
 		viewtype = 0;
 		$('viewtype').checked = false; //sync with viewtype checkbox
 	}
+
+	doMap = 0;	
+	$('doMap').checked = false; 
 
 	var server_ip = $F($('server_ip'));
 	var community = $F($('community'));
@@ -42,7 +45,7 @@ function clickTree(oid, idx, viewtype)
 	oidview._idx = idx;
 	new Ajax.Request(get_oid_url, {
 		method: 'post',
-		parameters: {mib: mib, server_ip: server_ip, community: community, oid: oid, idx: idx, viewtype : viewtype},
+		parameters: {mib: mib, server_ip: server_ip, community: community, oid: oid, idx: idx, viewtype: viewtype, doMap: doMap},
 		onSuccess: function(transport) {
 			var json = transport.responseText.evalJSON();
 			if (json.error)
@@ -50,7 +53,7 @@ function clickTree(oid, idx, viewtype)
 				alert(json.error);
 				return;
 			}
-			
+		
 			$('oidinfo').update(json.info);
 			switch (json.value.ret)
 			{
@@ -64,6 +67,36 @@ function clickTree(oid, idx, viewtype)
 		}
 	});
 }
+
+
+function clickMap(doMap)
+{
+	var viewtype = $F($('viewtype')); // 0: autodetect, 1:table;
+	if (!viewtype || viewtype == 0){
+		viewtype = 0;
+		$('viewtype').checked = false; //sync with viewtype checkbox
+	}
+
+	var server_ip = $F($('server_ip'));
+	var community = $F($('community'));
+	var mib = $F($('mib'));
+	var get_oid_url = 'snmp_builder.php?output=json';
+
+	new Ajax.Request(get_oid_url, {
+		method: 'post',
+		parameters: {mib: mib, server_ip: server_ip, community: community, oid: oidview._oid, idx: oidview._idx, viewtype: viewtype, doMap: doMap},
+		onSuccess: function(transport) {
+			var json = transport.responseText.evalJSON();
+			if (json.error)
+			{
+				alert(json.error);
+				return;
+			}
+		
+		}
+	});
+}
+
 
 //Make a simple convert from snmp type to a zabbix item
 //Support INTEGER , Couter32, Timeticks, STRING.
@@ -96,14 +129,41 @@ function convertOid(oid, type)
 //Convert then insert it into itemlist
 function onClickOid(e)
 {
-	
-	var row = this.data[0];
-	var item =convertOid(row[0],row[1]);
-	if (item)
-	{
-		itemlist.appendData(item);
-		Event.element(e).setStyle('background-color:yellow');
+	var doMapp = $F($('doMap'));
+	if (doMapp!=1)
+	{	
+		var row = this.data[0];
+		var item =convertOid(row[0],row[1]);
+		if (item)
+		{
+			itemlist.appendData(item);
+			Event.element(e).setStyle('background-color:yellow');
+		}
 	}
+	else
+	{
+		var viewtype = $F($('viewtype')); // 0: autodetect, 1:table;
+		var server_ip = $F($('server_ip'));
+		var community = $F($('community'));
+		var mib = $F($('mib'));
+		var get_oid_url = 'snmp_builder.php?select=1&output=json';
+
+		$('message').update("Added mapping from: " + oidview._oid);
+
+			new Ajax.Request(get_oid_url, {
+			method: 'post',
+			parameters: {mib: mib, server_ip: server_ip, community: community, oid: oidview._oid, idx: oidview._idx, viewtype: viewtype, doMap: doMapp},
+			onSuccess: function(transport) {
+				var json = transport.responseText.evalJSON();
+				if (json.error)
+				{
+					alert(json.error);
+					return;
+				}
+			}
+		});
+	}
+
 }
 
 
@@ -115,7 +175,7 @@ function onClickCell(e)
 	var server_ip = $F($('server_ip'));
 	var community = $F($('community'));
 	var mib = $F($('mib'));
-	
+
 	var x = Event.element(e).table_x;
 	var y = Event.element(e).table_y;
 	
@@ -123,11 +183,16 @@ function onClickCell(e)
 	{
 		oid = this.headers[x];
 		idx = this.data[y][0];
-		
+	
+		var doMapp = $F($('doMap'));
+		if (!doMapp) doMapp=0;
+		else $('message').update("Added mapping from: " + oid);
+
 		var get_oid_url = 'snmp_builder.php?select=1&output=json';
+
 		new Ajax.Request(get_oid_url, {
 			method: 'post',
-			parameters: {mib: mib, server_ip: server_ip, community: community, oid: oid, idx: idx},
+			parameters: {mib: mib, server_ip: server_ip, community: community, oid: oid, idx: idx, doMap: doMapp},
 			onSuccess: function(transport) {
 				var json = transport.responseText.evalJSON();
 				if (json.error)
@@ -135,23 +200,25 @@ function onClickCell(e)
 					alert(json.error);
 					return;
 				}
-				
-				$('oidinfo').update(json.info);
-				switch (json.value.ret)
-				{
-					case 0: //full information
-						var item =convertOid(json.value.row[0],json.value.row[1]);
-						if (item)
-						{
-							itemlist.appendData(item);
-						}
-						break;
-				}
+				if (doMapp!=1){	
+					$('oidinfo').update(json.info);
+					switch (json.value.ret)
+					{
+						case 0: //full information
+							var item =convertOid(json.value.row[0],json.value.row[1]);
+							if (item)
+							{
+								itemlist.appendData(item);
+							}
+							break;
+					}
+					Event.element(e).setStyle('background-color:yellow');
+				}	
 			}
 		});
-		Event.element(e).setStyle('background-color:yellow');
+		
 	}
-	
+
 }
 
 //On click a header in tableview
@@ -257,5 +324,13 @@ function onClickItem(e)
 function onViewType(e)
 {
 	var viewtype = $F($('viewtype')); // 0: autodetect, 1:table;
-	clickTree(oidview._oid, oidview._idx, viewtype);
+	var doMap = $F($('doMap'));
+	clickTreee(oidview._oid, oidview._idx, viewtype, doMap);
+}
+
+//On click the viewtype checkbox
+function onDoMap(e)
+{
+	var doMap = $F($('doMap')); // 0: autodetect, 1:table;
+	clickMap(doMap);
 }
