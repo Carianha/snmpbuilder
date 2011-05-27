@@ -23,7 +23,7 @@
 ?>
 <?php
 
-define('MIBS_ALL_PATH', '/usr/share/snmp/mibs:/usr/share/snmp/mibs/CISCO');
+define('MIBS_ALL_PATH', '/usr/share/snmp/mibs:/usr/share/mibs');
 
 require_once('include/config.inc.php');
 
