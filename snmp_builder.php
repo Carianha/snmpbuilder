@@ -23,7 +23,7 @@
 ?>
 <?php
 
-define('MIBS_ALL_PATH', '/home/zabbix/public_html/snmp_builder/mibs:/usr/share/snmp/mibs');
+define('MIBS_ALL_PATH', '/usr/share/snmp/mibs:/usr/share/snmp/mibs/CISCO');
 
 require_once('include/config.inc.php');
 
@@ -33,7 +33,8 @@ require_once('include/items.inc.php');
 
 $page["title"] = "SNMP Builder";
 $page['file'] = 'snmp_builder.php';
-$page['scripts'] = array('../snmp_builder/Tree.js','../snmp_builder/snmp_builder.js','../snmp_builder/DynTable.js','scriptaculous.js?load=effects,dragdrop');
+//$page['scripts'] = array('../snmp_builder/Tree.js','../snmp_builder/snmp_builder.js','../snmp_builder/DynTable.js','scriptaculous.js?load=effects,dragdrop');
+$page['scripts'] = array('Tree.js','snmp_builder.js','DynTable.js','effects.js','dragdrop.js');
 $page['hist_arg'] = array();
 $page['type'] = detect_page_type();
 include_once('include/page_header.php');
@@ -55,6 +56,7 @@ include_once('include/page_header.php');
 		'select'=> 		array(T_ZBX_INT, O_OPT, NULL,	NULL,		NULL),
 		'save'=> 		array(T_ZBX_INT, O_OPT, NULL,	NULL,		NULL),
 		'viewtype'=> 		array(T_ZBX_INT, O_OPT, NULL,	NULL,		NULL),
+		'doMap'=>		array(T_ZBX_INT, O_OPT, NULL,	NULL,		NULL),
 		'oid' => 		array(T_ZBX_STR, O_OPT, NULL,	NULL,		NULL),
 		'oids' => 		array(T_ZBX_STR, O_OPT, NULL,	NULL,		NULL),
 		'idx' => 		array(T_ZBX_STR, O_OPT, NULL,	NULL,		NULL),
@@ -105,7 +107,7 @@ include_once('include/page_header.php');
 		
 	if (isset($_REQUEST['server_ip']) && !empty($_REQUEST['server_ip']))
 	{
-		if (!preg_match('/^[0-9,\.]+$/i', $_REQUEST['server_ip']))
+		if (!preg_match('/^[:0-9,\.]+$/i', $_REQUEST['server_ip']))
 		{
 			json_error('Invalid server ip '.$_REQUEST['server_ip']);
 		}
@@ -128,11 +130,21 @@ include_once('include/page_header.php');
 		$oids = $_REQUEST['oids'];
 	if (isset($_REQUEST['viewtype']))
 		$viewtype =  $_REQUEST['viewtype'];
-		
+	else $viewtype = 0; 	
+
+	if (isset($_REQUEST['doMap']) && !empty($_REQUEST['doMap']))
+	{
+		$doMap = $_REQUEST['doMap'];			
+	}
+	else
+	{
+		$doMap = 0;
+	}
+
 ////////////////////////////////////////////////
 
 // actions
-		
+	
 	if (isset($_REQUEST['select']))
 	{
 		if (!$oid || !$mib)
@@ -147,7 +159,6 @@ include_once('include/page_header.php');
 			$value = get_table_value($community, $server_ip, $oid);
 		}
 		else {
-			//value
 			$value = get_oid_value($community, $server_ip, $oid, $idx);
 			if ($content == '') //Fix for table cells
 			{
@@ -155,9 +166,28 @@ include_once('include/page_header.php');
 			}
 		
 		}
-		
+	 	//file_put_contents('/tmp/snmpbuilder.log', "\nCONTENT: $content \n\nVALUE: ".serialize($value)."\n", FILE_APPEND);
+	
 		$json = json_encode(array('info' => $content, 'value' => $value));
 		echo $json;
+
+		if ( $doMap == 1 ) 
+		{
+			preg_match("/SYNTAX\sINTEGER\s\{(.*?)\}/",$content,$matches);
+			if ($matches[0] != '')
+			{
+				$obj_types = explode(", ",$matches[1]);	
+				//file_put_contents('/tmp/snmpbuilder.log', "\nOBJ_TYPES: ".serialize($obj_types)."\n", FILE_APPEND);
+
+				$newmap=array();	
+				foreach ($obj_types as $mapp)
+				{
+					$mappSplit= preg_split('/[\\(|\\)]/',$mapp,-1);
+					array_push($newmap,array("value" => $mappSplit[1], "newvalue" => $mappSplit[0]));		 	
+				}		 	
+				$result = add_valuemap("MAP: ".$value["row"][0],$newmap); 
+			}	
+		}
 		exit;
 	}
 	else if (isset($_REQUEST['save'])) {
@@ -192,6 +222,7 @@ include_once('include/page_header.php');
 				default:
 					json_error("invalid type ".$oid[1]);
 			}
+
 			
 			//data_type
 			switch($oid[2])
@@ -286,10 +317,7 @@ include_once('include/page_header.php');
 
 	
 	$snmp_wdgt = new CWidget();
-	$message_div = new CDiv();
-	$message_div->setAttribute("id","message");
-	$snmp_wdgt->addItem($message_div);
-	
+
 	//Header
 	$form = new CForm();
 	$form->setMethod('post');
@@ -352,7 +380,7 @@ include_once('include/page_header.php');
 	$oid_tree_div->setAttribute("id","oidtree");
 	
 	$oid_tree_container = new CDiv($oid_tree_div);
-	$oid_tree_container->addStyle("overflow: auto; background-color: rgb(255, 255, 255); height: 300px; width: 300px;");
+	$oid_tree_container->addStyle("overflow: auto; background-color: rgb(0, 0, 0); height: 500px; width: 500px;");
 	
 	$oid_tree_w->addItem($oid_tree_container);
 	$left_tab->addRow($oid_tree_w);
@@ -373,7 +401,7 @@ include_once('include/page_header.php');
 	//Oidview
 	$oid_view_w = new CWidget();
 	$oid_view_w->setClass('header');
-	$oid_view_w->addHeader(array("Oid View - click to view as table:",new CCheckBox('viewtype','no','onViewType()',1)));
+	$oid_view_w->addHeader(array("Oid View - click to view as table (if needed):",new CCheckBox('viewtype','no','onViewType()',1)));
 	
 	
 	$oid_view_div =  new CDiv();
@@ -381,6 +409,16 @@ include_once('include/page_header.php');
 	$oid_view_div ->addStyle("overflow: auto; max-height: 250px; width: 800px");
 	$oid_view_w->addItem($oid_view_div);
 	$right_tab->addRow($oid_view_w);
+
+	$doMap_w = new CWidget();
+	$doMap_w->setClass('header');
+	$doMap_w->addHeader(array("Do Mapping - click and choose a item above",new CCheckBox('doMap','no','onDoMap()',1)));
+	$doMap_div =  new CDiv();
+	$doMap_div->setAttribute("id","doMap");
+	$doMap_div->addStyle("overflow: auto; max-height: 200px; width: 800px");
+	$doMap_w->addItem($doMap_div);
+	$right_tab->addRow($doMap_w);
+	
 	
 	//Itemlist
 	$item_list_w = new CWidget();
@@ -401,7 +439,11 @@ include_once('include/page_header.php');
 	//$action_div = new CDiv();
 	//$action_w->addItem($action_div);
 	$right_tab->addRow($action_w);
-	
+
+	$message_div = new CDiv();
+	$message_div->setAttribute("id","message");
+	$right_tab->addRow($message_div);
+
 	// Left panel
 	
 	$td_l = new CCol($left_tab);
@@ -432,7 +474,7 @@ include_once('include/page_header.php');
 					'defaultImgOpen' : 'folderopen.gif',
 					'defaultImgClose' : 'folder.gif',
 					'onClick' : function (branch) { 
-							clickTree(branch.getId(),0) ;
+							clickTreee(branch.getId(),0,0) ;
 						}
 					});
 					oidtree.generate();
@@ -468,7 +510,10 @@ function get_module_name($filename)
 
 function get_oid_from_name($name)
 {
-	$oid = exec("snmptranslate -M ".MIBS_ALL_PATH." -m ALL -On $name");
+	$name = preg_replace('/"/','\\\\"',$name);
+	file_put_contents('/tmp/snmpbuilder.log', "<!-- snmptranslate -LE 1 -M -m ALL -On $name -->\n", FILE_APPEND);
+	// echo "<!-- snmptranslate -LE 1 -M ".MIBS_ALL_PATH." -m ALL -On $name");
+	$oid = exec("snmptranslate -LE 1 -M ".MIBS_ALL_PATH." -m ALL -On $name");
 	
 	if (preg_match('/[0123456789\.]+/', $oid))
 		return $oid;
@@ -486,13 +531,14 @@ function get_table_value($community, $server_ip, $oid)
 	}
 	else
 	{
-		exec("snmptable -v 2c -c $community -M ".MIBS_ALL_PATH." -m ALL $server_ip $oid -Ci -Ch -Cf \",\"", $results);
-		$headers = explode(",",$results[0]);
+		exec("snmptable -v 2c -c $community -M ".MIBS_ALL_PATH." -Ci -Ch -Cf \"@@@\" -m ALL $server_ip $oid ", $results);
+		$headers = explode("@@@",$results[0]);
 		unset($results);
-		exec("snmptable -v 2c -c $community -M ".MIBS_ALL_PATH." -m ALL $server_ip $oid -Ci -CH -Cf \",\"", $results);
+		exec("snmptable -v 2c -c $community -M ".MIBS_ALL_PATH." -Ci -CH -Cf \"@@@\" -m ALL $server_ip $oid ", $results);
+		file_put_contents('/tmp/snmpbuilder.log', "<!-- snmptable -v 2c -c $community -M ".MIBS_ALL_PATH." -Ci -CH -Cf \"@@@\" -m ALL $server_ip $oid -->\n", FILE_APPEND);
 		foreach ($results as $line)
 		{
-			$row = explode(",",$line);
+			$row = explode("@@@",$line);
 			array_push($rows, $row);
 		}
 		unset($results);
@@ -512,10 +558,15 @@ function get_oid_value($community, $server_ip, $oid, $idx)
 	
 	// idx is number or string thank danrog
 	if (preg_match('/^[0-9]+$/', $idx)) {
-		$cmd = "snmpget -v 2c -c $community -M ".MIBS_ALL_PATH." -m ALL $server_ip $oid.$idx";  
+		$cmd = "snmpget -LE 2 -v 2c -c $community -M ".MIBS_ALL_PATH." -m ALL $server_ip $oid.$idx";  
     } else {        
-		$cmd = "snmpget -v 2c -c $community -M ".MIBS_ALL_PATH." -m ALL $server_ip $oid.\"".$idx."\"";
-    }	
+		// $cmd = "snmpget -v 2c -c $community -M ".MIBS_ALL_PATH." -m ALL $server_ip $oid.\"".$idx."\"";
+		$cmd = "snmpget -LE 2 -v 2c -c $community -M ".MIBS_ALL_PATH." -m ALL $server_ip $oid.$idx";
+
+    }
+	$cmd = preg_replace('/"/','\\\\"',$cmd);
+	file_put_contents('/tmp/snmpbuilder.log', "<!-- $cmd -->\n", FILE_APPEND);
+	// echo "<!-- $cmd -->\n"; 
 	$results = exec($cmd);
 	
 	//exampe: IP-MIB::ipOutRequests.0 = Counter32: 12303729
@@ -563,7 +614,8 @@ function get_templates()
 	$template = array();
 	foreach (CTemplate::get($options) as $key => $value)
 	{
-		array_push($template, array('key' => $key, 'host' => $value['host']));
+		//array_push($template, array('key' => $key, 'host' => $value['host']));
+		array_push($template, array('key' => $value['hostid'], 'host' => $value['host']));
 	}
 	
 	return $template;
@@ -628,5 +680,3 @@ function explodeTree($mib, $array, $delimiter = '.')
     return $returnArr;
 }
 ?>
-
-
